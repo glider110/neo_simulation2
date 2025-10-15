@@ -3,6 +3,7 @@
 
     <!-- Include macros -->
     <xacro:include filename="$(find neo_simulation2)/components/common_macro/gazebo_lidar_macro.xacro" />
+    <xacro:include filename="$(find neo_simulation2)/components/common_macro/gazebo_depth_camera_macro.xacro" />
     <xacro:include filename="$(find neo_simulation2)/components/common_macro/gazebo_object_controller_macro.xacro" />
     <xacro:include filename="$(find neo_simulation2)/robots/mpo_700/urdf/macro/gazebo_mpo_700_wheel_macro.xacro" />
     
@@ -69,5 +70,21 @@
     <!-- Sick S300 - Comment/Uncomment if required -->
     <!-- <xacro:include filename="$(find neo_simulation2)/robots/mpo_700/xacros/sick_S300.xacro" /> -->
     <!--Ultrasonics, cameras and IMU's  -->
+    <!-- Depth camera sensor instantiation -->
+    <xacro:gazebo_depth_camera_sensor
+        sensor_name="front_depth_camera"
+        link_name="depth_camera_link"
+        frame_name="depth_camera_optical_frame"
+        update_rate="15"
+        width="640"
+        height="480"
+        fov="1.0472"
+        near_clip="0.1"
+        far_clip="10.0"
+        image_topic="/camera/depth/image_raw"
+        info_topic="/camera/depth/camera_info"
+        points_topic="/camera/points"
+        visualize="false"
+    />
       
 </robot>

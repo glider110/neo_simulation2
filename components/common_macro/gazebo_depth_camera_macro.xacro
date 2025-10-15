@@ -1,0 +1,73 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="gazebo_depth_camera_macros">
+
+  <!--
+    Macro: gazebo_depth_camera_sensor
+    Purpose: Attach a Gazebo depth camera sensor and ROS 2 plugins to a link
+    Params:
+      - sensor_name: unique sensor name
+      - link_name: link to which the sensor is attached
+      - update_rate: Hz
+      - width, height: image resolution
+      - fov: horizontal field of view (radians)
+      - near_clip, far_clip: camera clipping planes (meters)
+      - image_topic: ROS topic for depth image
+      - info_topic: ROS topic for camera_info
+      - points_topic: ROS topic for point cloud (PointCloud2)
+      - visualize: show sensor frustum in Gazebo
+  -->
+  <xacro:macro name="gazebo_depth_camera_sensor" params="
+      sensor_name
+      link_name
+      update_rate
+      width
+      height
+      fov
+      near_clip
+      far_clip
+      image_topic
+      info_topic
+      points_topic
+      frame_name:='' 
+      visualize='false'
+    ">
+
+    <gazebo reference="${link_name}">
+      <sensor name="${sensor_name}" type="depth">
+        <always_on>true</always_on>
+        <visualize>${visualize}</visualize>
+        <update_rate>${update_rate}</update_rate>
+        <!-- <pose>1 0 0 0 0 1.5707</pose> -->
+        <pose>0 0 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>${fov}</horizontal_fov>
+          <image>
+            <width>${width}</width>
+            <height>${height}</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>${near_clip}</near>
+            <far>${far_clip}</far>
+          </clip>
+        </camera>
+
+  <!-- Determine which frame to use in headers: default to link_name when frame_name is empty -->
+  <xacro:property name="dc_frame" value="${frame_name if frame_name != '' else link_name}"/>
+
+        <!-- ROS depth image + camera info publisher (ROS 2 uses gazebo_ros_camera for both RGB and Depth) -->
+        <plugin filename="libgazebo_ros_camera.so" name="${sensor_name}_depth_plugin">
+          <ros>
+            <argument>~/image_raw:=${image_topic}</argument>
+            <argument>~/camera_info:=${info_topic}</argument>
+          </ros>
+          <frame_name>${dc_frame}</frame_name>
+        </plugin>
+
+        <!-- Point cloud publishing can be done via depth_image_proc in ROS 2; Gazebo point cloud plugin is not available by default in Humble. -->
+
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+</robot>

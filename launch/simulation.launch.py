@@ -35,7 +35,7 @@ You can launch this file using the following terminal commands:
 """
 
 # OpaqueFunction is used to perform setup actions during launch through a Python function
-def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot_arm_arg, docking_adapter_arg, use_rviz_arg):
+def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot_arm_arg, docking_adapter_arg, use_rviz_arg, use_depth_pc_arg):
     # Create a list to hold all the nodes
     launch_actions = []
     # The perform method of a LaunchConfiguration is called to evaluate its value.
@@ -46,6 +46,7 @@ def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot
     use_sim_time = True
     # IfCondition only accepts "True" or "False"
     use_rviz = str(use_rviz_arg.perform(context).lower() == 'true')
+    use_depth_pc = str(use_depth_pc_arg.perform(context).lower() == 'true')
 
     robots = ["mpo_700", "mp_400", "mp_500", "mpo_500"]
 
@@ -192,6 +193,20 @@ def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot
         condition=IfCondition(use_rviz)
     )
 
+    # Optional: build point cloud from depth using depth_image_proc
+    depth_to_cloud = Node(
+        package='depth_image_proc',
+        executable='point_cloud_xyz',
+        name='depth_to_cloud',
+        remappings=[
+            ('depth', '/camera/depth/image_raw'),
+            ('info', '/camera/depth/camera_info'),
+            ('points', '/camera/points'),
+        ],
+        condition=IfCondition(use_depth_pc),
+        output='screen'
+    )
+
     # See Issue: https://github.com/ros2/rclpy/issues/1287
     # Cannot delete the newly create file. The user has to delete it on his own
     # Refer documentation for more info
@@ -210,6 +225,7 @@ def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot
     launch_actions.append(spawn_entity)
     launch_actions.append(teleop)
     launch_actions.append(start_rviz_cmd)
+    launch_actions.append(depth_to_cloud)
 
     # launch_actions.append(shutdown_event)
 
@@ -249,20 +265,27 @@ def generate_launch_description():
         description='Start RViz with predefined config (True/False)'
     )
 
+    declare_use_depth_pc_cmd = DeclareLaunchArgument(
+        'use_depth_point_cloud', default_value='False',
+        description='Start a depth_image_proc node to publish /camera/points (True/False)'
+    )
+
     # Create launch configuration variables for the robot and map name
     my_neo_robot_arg = LaunchConfiguration('my_robot')
     my_neo_env_arg = LaunchConfiguration('world')
     robot_arm_arg = LaunchConfiguration('arm_type')
     docking_adapter_arg = LaunchConfiguration('use_docking_adapter')
     use_rviz_arg = LaunchConfiguration('use_rviz')
+    use_depth_pc_arg = LaunchConfiguration('use_depth_point_cloud')
 
     ld.add_action(declare_my_robot_arg)
     ld.add_action(declare_world_name_arg)
     ld.add_action(declare_arm_type_cmd)
     ld.add_action(declare_docking_adapter_cmd)
     ld.add_action(declare_use_rviz_cmd)
+    ld.add_action(declare_use_depth_pc_cmd)
 
-    context_arguments = [my_neo_robot_arg, my_neo_env_arg, robot_arm_arg, docking_adapter_arg, use_rviz_arg]
+    context_arguments = [my_neo_robot_arg, my_neo_env_arg, robot_arm_arg, docking_adapter_arg, use_rviz_arg, use_depth_pc_arg]
 
     opq_function = OpaqueFunction(
         function=launch_setup, 

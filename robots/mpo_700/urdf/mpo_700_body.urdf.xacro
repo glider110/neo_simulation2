@@ -1,6 +1,13 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="mpo_700">
 
+    <!-- Depth camera visual pose tuning (affects only mesh appearance, not TF/sensor) -->
+    <xacro:property name="depth_cam_visual_xyz" value="0 0 0"/>
+    <!-- Default: pitch -90deg (about Y) and yaw +90deg (about Z), lens faces +X and body horizontal -->
+    <!-- <xacro:property name="depth_cam_visual_rpy" value="0 -1.57079632679 1.57079632679"/> -->
+    <!-- 相机gui正确,点云错误 -->
+    <xacro:property name="depth_cam_visual_rpy" value="1.57079632679 0 1.57079632679"/>    
+
     <link name="base_footprint"/>
 
     <link name="base_link">
@@ -192,5 +199,45 @@
             <origin xyz="-0.300 0 0.320" rpy="0 0 -1.57" />
         </xacro:docking_adapter>
     </xacro:if>
+
+    <!-- Depth camera mounting (front top center) -->
+    <joint name="depth_camera_joint" type="fixed">
+        <parent link="base_link"/>
+        <!-- Slightly in front and above the base; looking forward -->
+        <origin xyz="0.35 0.0 0.25" rpy="0 0 0"/>
+        <child link="depth_camera_link"/>
+    </joint>
+
+    <link name="depth_camera_link">
+        <inertial>
+            <mass value="0.5"/>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+        </inertial>
+        <visual>
+            <!-- Mesh-only pose: can be tuned with depth_cam_visual_xyz/rpy without touching TF/sensor -->
+            <origin xyz="${depth_cam_visual_xyz}" rpy="${depth_cam_visual_rpy}"/>
+            <geometry>
+                <mesh filename="package://neo_simulation2/components/meshes/d435.dae" scale="1 1 1"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="${depth_cam_visual_xyz}" rpy="${depth_cam_visual_rpy}"/>
+            <geometry>
+                <mesh filename="package://neo_simulation2/components/meshes/d435.dae" scale="1 1 1"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <!-- Depth camera optical frame (standard optical: x right, y down, z forward) -->
+    <joint name="depth_camera_optical_joint" type="fixed">
+        <parent link="depth_camera_link"/>
+        <!-- REP 103 / optical frames: rotate from robot-forward (x forward, z up) to optical (z forward, x right, y down) -->
+        <!-- <origin xyz="0 0 0" rpy="1.57079632679 0 1.57079632679"/> -->
+        <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679"/>
+        <!-- <origin xyz="0 0 0" rpy=".0 0 0"/> -->
+        <child link="depth_camera_optical_frame"/>
+    </joint>
+    <link name="depth_camera_optical_frame"/>
 
 </robot>
