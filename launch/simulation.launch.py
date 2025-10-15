@@ -13,6 +13,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterFile
+from launch.conditions import IfCondition
 from launch.event_handlers import OnShutdown
 import os
 import xacro
@@ -34,7 +35,7 @@ You can launch this file using the following terminal commands:
 """
 
 # OpaqueFunction is used to perform setup actions during launch through a Python function
-def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot_arm_arg, docking_adapter_arg):
+def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot_arm_arg, docking_adapter_arg, use_rviz_arg):
     # Create a list to hold all the nodes
     launch_actions = []
     # The perform method of a LaunchConfiguration is called to evaluate its value.
@@ -43,6 +44,8 @@ def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot
     robot_arm_type = robot_arm_arg.perform(context)
     use_docking_adapter = docking_adapter_arg.perform(context)
     use_sim_time = True
+    # IfCondition only accepts "True" or "False"
+    use_rviz = str(use_rviz_arg.perform(context).lower() == 'true')
 
     robots = ["mpo_700", "mp_400", "mp_500", "mpo_500"]
 
@@ -61,14 +64,44 @@ def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot
             print("Robot does not support arm, setting arm_type to empty")
             robot_arm_type = ''
 
-    # Get the required paths for the world and robot robot_description_urdf
-    if (my_neo_environment == "neo_workshop" or my_neo_environment == "neo_track1"):
-        world_path = os.path.join(
-            get_package_share_directory('neo_simulation2'),
-            'worlds',
-            my_neo_environment + '.world')
-    else:
-        world_path = my_neo_environment
+    # Resolve world path from:
+    # 1) absolute path provided by user
+    # 2) package share worlds directory (name or name.world)
+    # 3) source tree worlds directory (relative to this file) as a fallback
+    def resolve_world_path(name_or_path: str) -> str:
+        # Absolute path directly to a world file
+        if os.path.isabs(name_or_path) and os.path.exists(name_or_path):
+            return name_or_path
+
+        pkg_share = get_package_share_directory('neo_simulation2')
+        candidates = []
+
+        if name_or_path.endswith('.world'):
+            candidates.append(os.path.join(pkg_share, 'worlds', name_or_path))
+        else:
+            candidates.append(os.path.join(pkg_share, 'worlds', name_or_path + '.world'))
+
+        # Fallback to source tree (works with symlink-install or running from source)
+        launch_dir = os.path.dirname(__file__)
+        if name_or_path.endswith('.world'):
+            candidates.append(os.path.join(launch_dir, '..', 'worlds', name_or_path))
+        else:
+            candidates.append(os.path.join(launch_dir, '..', 'worlds', name_or_path + '.world'))
+
+        # If a relative path to a file was provided
+        if not os.path.isabs(name_or_path):
+            candidates.append(os.path.join(os.getcwd(), name_or_path))
+
+        for c in candidates:
+            c_abs = os.path.abspath(c)
+            if os.path.exists(c_abs):
+                return c_abs
+
+        # As a last resort, pass through the original (gazebo will try to resolve)
+        print(f"[simulation.launch] Warning: could not resolve world '{name_or_path}', passing through as-is")
+        return name_or_path
+
+    world_path = resolve_world_path(my_neo_environment)
 
     # Setting the world and starting the Gazebo
     gazebo = IncludeLaunchDescription(
@@ -103,6 +136,13 @@ def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot
         robot_description_xacro, 
         mappings=xacro_args
         ).toxml()
+
+    # RViz configuration path
+    rviz_config = os.path.join(
+        get_package_share_directory('neo_simulation2'),
+        'rviz',
+        'robot_description_rviz.rviz'
+    )
 
     # Spawning the robot
     spawn_entity = Node(
@@ -143,6 +183,15 @@ def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot
         arguments=["joint_trajectory_controller", "-c", "/controller_manager"],
     )
 
+    # RViz node (optional)
+    start_rviz_cmd = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        arguments=['-d', rviz_config],
+        condition=IfCondition(use_rviz)
+    )
+
     # See Issue: https://github.com/ros2/rclpy/issues/1287
     # Cannot delete the newly create file. The user has to delete it on his own
     # Refer documentation for more info
@@ -160,6 +209,7 @@ def launch_setup(context: LaunchContext, my_neo_robot_arg, my_neo_env_arg, robot
     launch_actions.append(gazebo)
     launch_actions.append(spawn_entity)
     launch_actions.append(teleop)
+    launch_actions.append(start_rviz_cmd)
 
     # launch_actions.append(shutdown_event)
 
@@ -194,18 +244,25 @@ def generate_launch_description():
         '\t Neobotix: docking_adapter'
     )
 
+    declare_use_rviz_cmd = DeclareLaunchArgument(
+        'use_rviz', default_value='True',
+        description='Start RViz with predefined config (True/False)'
+    )
+
     # Create launch configuration variables for the robot and map name
     my_neo_robot_arg = LaunchConfiguration('my_robot')
     my_neo_env_arg = LaunchConfiguration('world')
     robot_arm_arg = LaunchConfiguration('arm_type')
     docking_adapter_arg = LaunchConfiguration('use_docking_adapter')
+    use_rviz_arg = LaunchConfiguration('use_rviz')
 
     ld.add_action(declare_my_robot_arg)
     ld.add_action(declare_world_name_arg)
     ld.add_action(declare_arm_type_cmd)
     ld.add_action(declare_docking_adapter_cmd)
+    ld.add_action(declare_use_rviz_cmd)
 
-    context_arguments = [my_neo_robot_arg, my_neo_env_arg, robot_arm_arg, docking_adapter_arg]
+    context_arguments = [my_neo_robot_arg, my_neo_env_arg, robot_arm_arg, docking_adapter_arg, use_rviz_arg]
 
     opq_function = OpaqueFunction(
         function=launch_setup, 
